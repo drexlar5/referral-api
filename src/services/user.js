@@ -60,6 +60,11 @@ const _updateReferrerReferralData = async (code, newUser) => {
   return [updatedReferrer.referral_count, referrer._id];
 };
 
+/**
+ * Handles the referral logic
+ * @param code
+ * @param newUser mongoose object
+ */
 const _linkUserToReferrer = async (code, newUser) => {
   const [updatedReferralCount, referrerId] = await _updateReferrerReferralData(
     code,
