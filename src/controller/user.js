@@ -1,58 +1,57 @@
 /* ---------------------------- internal imports ---------------------------- */
-const authService = require('../services/user');
+const {
+  createUser,
+  authenticateUser,
+  getReferralUrl,
+  getUserById,
+} = require("../services/user");
+const {
+  sendSuccessResponse,
+  sendFailureResponse,
+} = require("../utils/response");
 
 exports.createUser = async (req, res, next) => {
   try {
     const { body, query } = req;
 
-    const data = await authService.createUser(body, query);
+    const data = await createUser(body, query);
 
-    res.json({
-      error: false,
-      message: 'User created.',
-      data
-    });
+    sendSuccessResponse(res, "User created.", data);
   } catch (error) {
-    if (!error.statusCode) {
-      error.statusCode = 500;
-    }
-    next(error);
+    sendFailureResponse(error, next);
   }
-}
+};
 
 exports.authenticateUser = async (req, res, next) => {
   try {
     const { body } = req;
 
-    const data = await authService.authenticateUser(body);
-    
-    res.json({
-      error: false,
-      message: 'User authenticated',
-      data
-    })
-  } catch (error) {
-    if (!error.statusCode) {
-      error.statusCode = 500;
-    }
-    next(error);
-  }
-}
+    const data = await authenticateUser(body);
 
-exports.getReferralCode = async (req, res, next) => {
+    sendSuccessResponse(res, "User authenticated", data);
+  } catch (error) {
+    sendFailureResponse(error, next);
+  }
+};
+
+exports.getReferralUrl = async (req, res, next) => {
   try {
+    const data = await getReferralUrl(req.userId);
 
-    const data = await authService.getReferralCode(req.userId);
-    
-    res.json({
-      error: false,
-      message: 'Referral code created.',
-      data
-    })
+    sendSuccessResponse(res, "Referral code created.", data);
   } catch (error) {
-    if (!error.statusCode) {
-      error.statusCode = 500;
-    }
-    next(error);
+    sendFailureResponse(error, next);
   }
-}
+};
+
+exports.getUserById = async (req, res, next) => {
+  try {
+    const { userId } = req;
+
+    const data = await getUserById(userId);
+
+    sendSuccessResponse(res, "User details found.", data);
+  } catch (error) {
+    sendFailureResponse(error, next);
+  }
+};

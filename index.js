@@ -6,11 +6,13 @@ const bodyParser = require("body-parser");
 const morgan = require("morgan");
 
 /* ---------------------------- internal imports ---------------------------- */
-const mongoConn = require("./src/config/connection");
-const authRoute = require("./src/routes/user");
+const mongoConnection = require("./src/config/connection");
 const logger = require("./src/lib/logger");
 const { cors } = require("./src/middleware/utils");
-const errorHandler = require("./src/utils/error");
+const { globalErrorHandler } = require("./src/utils/error");
+
+const userRoute = require("./src/routes/user");
+const routeNotFound = require("./src/controller/routeNotFound");
 
 const app = express();
 
@@ -22,14 +24,12 @@ app.use(cors);
 app.use(bodyParser.json());
 
 // Routes
-app.use("/api/v1", authRoute);
+app.use("/api/v1", userRoute);
 
-app.use("*", (_req, res, _next) =>
-  res.status(404).json({ error: true, message: "Route not found." })
-);
+app.use("*", routeNotFound);
 
 // Global error handler
-app.use(errorHandler);
+app.use(globalErrorHandler);
 
 // Mongoose, app connection
-mongoConn.connectToDb(app);
+mongoConnection.connectToDb(app);

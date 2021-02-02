@@ -8,99 +8,116 @@ const { default: ShortUniqueId } = require("short-unique-id");
 
 /* ---------------------------- internal imports ---------------------------- */
 const User = require("../models/user");
-const config = require("../config/config");
 const logger = require("../lib/logger");
+const { secret } = require("../config/config");
+const { throwError } = require("../utils/error");
 
 const uid = new ShortUniqueId({ length: 8 });
 
 /**
- * Updates and credits the referrers account
+ * Credits the referrers account
+ * @param referrerId
+ */
+const _creditReferrer = async (referrerId) => {
+  await User.updateOne(
+    {
+      _id: referrerId,
+    },
+    {
+      $inc: {
+        credit: 10,
+      },
+    }
+  );
+};
+
+/**
+ * Updates the referrers data
  * @param code
  * @param newUser mongoose object
+ * @returns referral_count Number
  */
-const _updateAndCreditReferrer = async (code, newUser) => {
-  
-    const referrer = await User.findOne({ referral_code: code });
+const _updateReferrerReferralData = async (code, newUser) => {
+  const referrer = await User.findOne({ referral_code: code }).lean();
 
-    if (!referrer) {
-      let error = new Error("Referral code doesn't exist.");
-      error.statusCode = 400;
-      throw error;
+  if (!referrer) throwError("Referral code doesn't exist.", 400);
+
+  const { referral_count, referred_users } = referrer;
+
+  const updatedReferralCount = referral_count + 1;
+  const updatedReferredUsersArray = [...referred_users, newUser._id];
+
+  let updatedReferrer = await User.findOneAndUpdate(
+    {
+      _id: referrer._id,
+    },
+    {
+      referral_count: updatedReferralCount,
+      referred_users: updatedReferredUsersArray,
+    },
+    { new: true }
+  );
+  return [updatedReferrer.referral_count, referrer._id];
+};
+
+const _linkUserToReferrer = async (code, newUser) => {
+  const [updatedReferralCount, referrerId] = await _updateReferrerReferralData(
+    code,
+    newUser
+  );
+
+  if (updatedReferralCount % 5 === 0) await _creditReferrer(referrerId);
+};
+
+/**
+ * Signs JWT token
+ * @param userId
+ * @returns jwt token - String
+ */
+const _signJwtToken = (userId) =>
+  jwt.sign(
+    {
+      userId,
+    },
+    secret,
+    {
+      expiresIn: "1h",
     }
-
-    const updatedReferralCount = referrer.referral_count + 1;
-    const updatedReferredUsersArray = [
-      ...referrer.referred_users,
-      newUser._id,
-    ];
-
-    if (updatedReferralCount % 5 === 0) {
-     await User.updateOne(
-        {
-          _id: referrer._id,
-        },
-        {
-          referral_count: updatedReferralCount,
-          credit: referrer.credit + 10,
-          referred_users: updatedReferredUsersArray,
-        }, {new: true}
-      );
-    } else {
-      await User.updateOne(
-        {
-          _id: referrer._id,
-        },
-        {
-          referral_count: updatedReferralCount,
-          referred_users: updatedReferredUsersArray,
-        },
-        {new: true}
-      );
-    }
-}
+  );
 
 /**
  * Creates a user
  * @param email
  * @param password
  * @param code optional
- * @returns message - String
+ * @returns savedUser - Object
  */
-exports.createUser = async (data, query) => {
+exports.createUser = async (data, queryParams) => {
   try {
     const { email, password } = data;
     const formattedEmail = email.toLowerCase().trim();
-    const user = await User.findOne({ email: formattedEmail });
-
-    if (user) {
-      let error = new Error("Email already exists.");
-      error.statusCode = 400;
-      throw error;
-    }
-
     const hashedPassword = await bcrypt.hash(password, 12);
 
     const newUser = new User({
       email: formattedEmail,
       password: hashedPassword,
-      credit: query?.code ? 10 : 0,
+      // credit user that signs up with referral link
+      credit: queryParams?.code ? 10 : 0,
     });
 
-    if (query?.code && Object.keys(query).length > 0) await _updateAndCreditReferrer(query?.code, newUser);
+    if (queryParams?.code)
+      await _linkUserToReferrer(queryParams?.code, newUser);
 
-    const response = await newUser.save();
+    const savedUser = await newUser.save();
 
-    if (!response) {
-      let error = new Error("User not created.");
-      error.statusCode = 501;
-      throw error;
-    }
+    if (!savedUser) throwError("User not created.", 501);
 
-    return `User created successfully with credit balance of ${
-      query?.code ? "$10" : "$0"
-    }.`;
+    return savedUser;
   } catch (error) {
-    logger.error("Service::createUser::error", error.message);
+    logger.error("Service::createUser::error", error);
+    if (error.name === "MongoError" && error?.code === 11000) {
+      throwError("User already exists.", 401);
+    }
     throw error;
   }
 };
@@ -114,36 +131,15 @@ exports.createUser = async (data, query) => {
 exports.authenticateUser = async ({ email, password }) => {
   try {
     const formattedEmail = email.toLowerCase().trim();
-    const user = await User.findOne({ email: formattedEmail });
 
-    if (!user) {
-      let error = new Error("User does not exist.");
-      error.statusCode = 401;
-      throw error;
-    }
+    const user = await User.findOne({ email: formattedEmail }).lean();
+    if (!user) throwError("User does not exist.", 401);
 
-    const isEqual = await bcrypt.compare(password, user.password);
+    const passwordIsValid = await bcrypt.compare(password, user.password);
+    if (!passwordIsValid) throwError("Wrong password.", 401);
 
-    if (!isEqual) {
-      const error = new Error("Wrong password.");
-      error.statusCode = 401;
-      throw error;
-    }
-
-    const token = jwt.sign(
-      {
-        userId: user._id,
-      },
-      config.secret,
-      {
-        expiresIn: "3h",
-      }
-    );
-
-    if (!token) {
-      const error = new Error("Error occured, could not create token.");
-      throw error;
-    }
+    const token = _signJwtToken(user._id);
+    if (!token) throwError("Error occured, could not create token.", 500);
 
     return token;
   } catch (error) {
@@ -153,51 +149,60 @@ exports.authenticateUser = async ({ email, password }) => {
 };
 
 /**
- * Creates referral code
- * @param id
+ * Generates referral url
+ * @param userId
  * @returns referral url - String
  */
-exports.getReferralCode = async (id) => {
+exports.getReferralUrl = async (userId) => {
   try {
-    const user = await User.findOne({ _id: id });
+    const user = await User.findOne({ _id: userId }).lean();
 
-    if (!user) {
-      let error = new Error("User does not exist.");
-      error.statusCode = 401;
-      throw error;
-    }
+    if (!user) throwError("User does not exist.", 401);
 
-    if (user.referral_code !== "none") {
-      let error = new Error("User has created a referal code already.");
-      error.statusCode = 501;
-      throw error;
-    }
+    if (user.referral_code)
+      throwError("User has created a referal code already.", 501);
 
-    const { prod_url, dev_url, node_env } = config;
-    const data = { referral_code: uid() };
+    const { referral_base_url } = config;
+    const referralId = uid();
 
-    const updatedData = await User.updateOne(
+    const updatedUser = await User.findOneAndUpdate(
       {
-        _id: mongoose.Types.ObjectId(id),
+        _id: userId,
       },
-      data,
+      { referral_code: referralId },
       { new: true }
     );
 
-    if (updatedData.nModified !== 1) {
-      let error = new Error("Referral code not created.");
-      error.statusCode = 500;
-      throw error;
-    }
+    if (updatedUser.referral_code !== referralId)
+      throwError("Referral code not created.", 500);
 
-    const params = `register?code=${data.referral_code}`;
+    const referral_url_params = `register?code=${referralId}`;
 
-    const referral_url =
-      node_env === "prod" ? `${prod_url}/${params}` : `${dev_url}/${params}`;
+    const referral_url = `${referral_base_url}/${referral_url_params}`;
 
     return referral_url;
   } catch (error) {
-    logger.error("Service::getReferralCode::error", error.message);
+    logger.error("Service::getReferralUrl::error", error.message);
+    throw error;
+  }
+};
+
+/**
+ * Get a user by Id
+ * @param userId
+ * @returns user details - String
+ */
+exports.getUserById = async (userId) => {
+  try {
+    const userDetails = await User.findOne({ _id: userId })
+      .lean()
+      .select("-_id -password -__v");
+
+    if (!userDetails) throwError("User does not exist.", 401);
+
+    return userDetails;
+  } catch (error) {
+    logger.error("Service::getUserById::error", error.message);
     throw error;
   }
 };

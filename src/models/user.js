@@ -9,6 +9,7 @@ const userSchema = new Schema({
   email: {
     type: String,
     required: true,
+    unique: true
   },
   password: {
     type: String,
@@ -16,7 +17,7 @@ const userSchema = new Schema({
   },
   referral_code: {
     type: String,
-    default: "none",
+    default: null,
   },
   referral_count: {
     type: Number,
@@ -31,6 +32,6 @@ const userSchema = new Schema({
     ref: 'User',
     default: []
   }],
-});
+}).index({ email: "text" });
 
 module.exports = mongoose.model("User", userSchema);

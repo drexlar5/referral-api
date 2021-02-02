@@ -1,4 +1,4 @@
-const errorHandler = (error, _req, res, _next) => {
+exports.globalErrorHandler = (error, _req, res, _next) => {
 
   const status = error.statusCode || 500;
   const message = error.message;
@@ -12,4 +12,8 @@ const errorHandler = (error, _req, res, _next) => {
   })
 };
 
-module.exports = errorHandler;
+exports.throwError = (message, statusCode) => {
+  let error = new Error(message);
+  error.statusCode = statusCode;
+  throw error;
+}
