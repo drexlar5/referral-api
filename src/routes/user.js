@@ -21,10 +21,4 @@ router.get("/user", isAuth, getUserById);
 router.post("/register", validate(authValidation), createUser);
 router.post("/login", validate(authValidation), authenticateUser);
 
-// to be deleted
-const User = require("../models/user");
-router.delete("/del", async (_req, res) =>
-  res.json(await User.deleteMany({ __v: 0 }))
-);
-
 module.exports = router;
