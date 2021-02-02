@@ -18,15 +18,19 @@ YARN version - v1.22.10
 - jest
 - supertest
 
+note: `run all commands in the applications root directory`
+
 **Install all dependencies**
 
 ```
 yarn install
 ```
 
-**Start the application**
+**Start the application**s
 
 ```
+source .env
+
 yarn start
 ```
 
