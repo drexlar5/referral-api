@@ -62,11 +62,11 @@ describe("Referral App Integration Test", () => {
 
     describe("Create user Test", () => {
       it("should create a user", async (done) => {
-        const { body } = await registerUser();
+        const { body: responseBody } = await registerUser();
 
-        expect(body).toBeObject();
-        expect(body.error).toBeFalse();
-        expect(body.message).toEqual("User created.");
+        expect(responseBody).toBeObject();
+        expect(responseBody.error).toBeFalse();
+        expect(responseBody.message).toEqual("User created.");
 
         done();
       });
@@ -75,13 +75,15 @@ describe("Referral App Integration Test", () => {
     describe("Authenticate user Test", () => {
       it("should authenticate a user", async (done) => {
         await registerUser();
-        const { body } = await loginUser();
+        const { body: responseBody } = await loginUser();
 
-        expect(body).toBeObject();
-        expect(body.error).toBeFalse();
-        expect(body.message).toEqual("User authenticated");
-        expect(body.data).toBeString();
-        expect(body.data).toStartWith("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9");
+        expect(responseBody).toBeObject();
+        expect(responseBody.error).toBeFalse();
+        expect(responseBody.message).toEqual("User authenticated");
+        expect(responseBody.data).toBeString();
+        expect(responseBody.data).toStartWith(
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+        );
 
         done();
       });
